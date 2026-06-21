@@ -84,7 +84,12 @@
 	const lastResult = $derived<MatchResult | null>($matchResults.length > 0 ? $matchResults[$matchResults.length - 1] : null);
 
 	function getRankChange(standing: TeamStanding): string {
-		if (standing.previousRank === undefined) return '—';
+		if (standing.previousRank === undefined) {
+			if ($matchResults.length > 0 && standing.played > 0) {
+				return '新';
+			}
+			return '—';
+		}
 		const diff = standing.previousRank - standing.rank;
 		if (diff > 0) return `↑${diff}`;
 		if (diff < 0) return `↓${Math.abs(diff)}`;
@@ -92,7 +97,12 @@
 	}
 
 	function getRankChangeClass(standing: TeamStanding): string {
-		if (standing.previousRank === undefined) return 'rank-new';
+		if (standing.previousRank === undefined) {
+			if ($matchResults.length > 0 && standing.played > 0) {
+				return 'rank-new';
+			}
+			return 'rank-same';
+		}
 		const diff = standing.previousRank - standing.rank;
 		if (diff > 0) return 'rank-up';
 		if (diff < 0) return 'rank-down';

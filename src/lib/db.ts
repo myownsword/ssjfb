@@ -305,3 +305,30 @@ export async function deleteRankingSnapshotsAfter(
 	);
 	await saveDb();
 }
+
+export async function getPreviousRankingSnapshots(
+	seasonId: string
+): Promise<RankingSnapshot[]> {
+	await db.read();
+	const allSnapshots = db.data!.rankingSnapshots
+		.filter((s) => s.seasonId === seasonId)
+		.sort((a, b) => b.timestamp - a.timestamp);
+
+	if (allSnapshots.length === 0) return [];
+
+	const timestamps = Array.from(new Set(allSnapshots.map((s) => s.timestamp))).sort(
+		(a, b) => b - a
+	);
+
+	if (timestamps.length < 2) return [];
+
+	const previousTimestamp = timestamps[1];
+	return allSnapshots.filter((s) => s.timestamp === previousTimestamp);
+}
+
+export async function getRankingSnapshotsByMatchResultId(
+	matchResultId: string
+): Promise<RankingSnapshot[]> {
+	await db.read();
+	return db.data!.rankingSnapshots.filter((s) => s.matchResultId === matchResultId);
+}

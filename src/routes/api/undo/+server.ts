@@ -1,6 +1,5 @@
 import { json, error } from '@sveltejs/kit';
 import { getLatestMatchResult, deleteMatchResult } from '$lib/db';
-import { deleteRankingSnapshotsAfter } from '$lib/db';
 
 export async function POST({ request }) {
 	const data = await request.json();
@@ -14,9 +13,6 @@ export async function POST({ request }) {
 	if (!latestResult) {
 		return error(400, '没有可撤回的比赛结果');
 	}
-
-	const timestamp = latestResult.createdAt;
-	await deleteRankingSnapshotsAfter(seasonId, timestamp);
 
 	const success = await deleteMatchResult(latestResult.id);
 	if (!success) {

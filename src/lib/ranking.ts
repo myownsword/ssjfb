@@ -10,7 +10,8 @@ import {
 	getMatchResultsBySeason,
 	getRankingSnapshotsBefore,
 	saveRankingSnapshots,
-	getFixtureById
+	getFixtureById,
+	getPreviousRankingSnapshots
 } from './db';
 
 function generateId(): string {
@@ -247,12 +248,7 @@ export async function getStandingsWithPreviousRank(
 ): Promise<TeamStanding[]> {
 	const currentStandings = await calculateStandings(seasonId);
 
-	const latestSnapshot = currentStandings.length > 0 ? currentStandings[0] : null;
-	let previousSnapshots: RankingSnapshot[] = [];
-
-	if (latestSnapshot) {
-		previousSnapshots = await getRankingSnapshotsBefore(seasonId, Date.now() + 1);
-	}
+	const previousSnapshots = await getPreviousRankingSnapshots(seasonId);
 
 	const previousRankMap = new Map<string, number>();
 	for (const snapshot of previousSnapshots) {
