@@ -87,9 +87,78 @@ export interface MatchImpact {
 }
 
 export interface Database {
-  seasons: Season[];
-  teams: Team[];
-  fixtures: Fixture[];
-  matchResults: MatchResult[];
-  rankingSnapshots: RankingSnapshot[];
+	seasons: Season[];
+	teams: Team[];
+	fixtures: Fixture[];
+	matchResults: MatchResult[];
+	rankingSnapshots: RankingSnapshot[];
+}
+
+export interface ImportRow {
+	lineNumber: number;
+	round: number;
+	homeTeamName: string;
+	awayTeamName: string;
+	homeScore?: number;
+	awayScore?: number;
+	isHomeForfeit: boolean;
+	isAwayForfeit: boolean;
+	hasResult: boolean;
+	raw: string;
+}
+
+export type ImportAction = 'create' | 'skip' | 'error';
+
+export interface ImportTeamPreview {
+	name: string;
+	action: ImportAction;
+	reason: string;
+}
+
+export interface ImportFixturePreview {
+	round: number;
+	homeTeamName: string;
+	awayTeamName: string;
+	action: ImportAction;
+	reason: string;
+	lineNumber: number;
+}
+
+export interface ImportResultPreview {
+	round: number;
+	homeTeamName: string;
+	awayTeamName: string;
+	homeScore: number;
+	awayScore: number;
+	isHomeForfeit: boolean;
+	isAwayForfeit: boolean;
+	action: ImportAction;
+	reason: string;
+	lineNumber: number;
+}
+
+export interface ImportPreview {
+	teams: ImportTeamPreview[];
+	fixtures: ImportFixturePreview[];
+	results: ImportResultPreview[];
+	summary: {
+		teamsNew: number;
+		teamsSkipped: number;
+		teamsError: number;
+		fixturesNew: number;
+		fixturesSkipped: number;
+		fixturesError: number;
+		resultsNew: number;
+		resultsSkipped: number;
+		resultsError: number;
+	};
+	canProceed: boolean;
+}
+
+export interface ImportCommitResult {
+	success: boolean;
+	teamsCreated: number;
+	fixturesCreated: number;
+	resultsCreated: number;
+	message: string;
 }

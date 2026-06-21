@@ -9,10 +9,11 @@
 		showError,
 		showSuccess
 	} from '$lib/stores';
-	import type { Fixture, MatchResult, Team, Season } from '$lib/types';
+	import type { Fixture, MatchResult, Team, ImportPreview, ImportRow } from '$lib/types';
 
 	let showAddFixture = $state(false);
 	let showAddResult = $state(false);
+	let showImport = $state(false);
 
 	let newFixture = $state({
 		homeTeamId: '',
@@ -31,6 +32,12 @@
 
 	let isCreatingFixture = $state(false);
 	let isCreatingResult = $state(false);
+
+	let importText = $state('');
+	let importPreview = $state<ImportPreview | null>(null);
+	let importRows = $state<ImportRow[]>([]);
+	let isImportPreviewing = $state(false);
+	let isImportCommitting = $state(false);
 
 	async function loadData() {
 		if (!$currentSeasonId) return;
@@ -162,6 +169,82 @@
 		}
 	}
 
+	async function previewImport() {
+		if (!$currentSeasonId || !importText.trim()) {
+			showError('请输入导入内容');
+			return;
+		}
+
+		isImportPreviewing = true;
+		importPreview = null;
+		try {
+			const res = await fetch('/api/import', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					seasonId: $currentSeasonId,
+					mode: 'preview',
+					text: importText
+				})
+			});
+
+			if (res.ok) {
+				const data = await res.json();
+				importPreview = data.preview;
+				importRows = data.rows || [];
+			} else {
+				const err = await res.text();
+				showError(err);
+			}
+		} catch (e) {
+			showError('预检失败');
+		} finally {
+			isImportPreviewing = false;
+		}
+	}
+
+	async function commitImport() {
+		if (!$currentSeasonId || !importPreview) return;
+
+		isImportCommitting = true;
+		try {
+			const res = await fetch('/api/import', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					seasonId: $currentSeasonId,
+					mode: 'commit',
+					rows: importRows,
+					preview: importPreview
+				})
+			});
+
+			if (res.ok) {
+				const data = await res.json();
+				showSuccess(data.result.message);
+				importPreview = null;
+				importText = '';
+				importRows = [];
+				showImport = false;
+				await loadData();
+			} else {
+				const err = await res.text();
+				showError(err);
+			}
+		} catch (e) {
+			showError('导入提交失败');
+		} finally {
+			isImportCommitting = false;
+		}
+	}
+
+	function cancelImport() {
+		showImport = false;
+		importText = '';
+		importPreview = null;
+		importRows = [];
+	}
+
 	const currentSeason = $derived($seasons.find((s) => s.id === $currentSeasonId));
 
 	const canEdit = $derived(!!(currentSeason && !currentSeason.isArchived));
@@ -214,6 +297,18 @@
 		return `${homeScore}-${awayScore}`;
 	}
 
+	function actionBadgeClass(action: string): string {
+		if (action === 'create') return 'badge badge-success';
+		if (action === 'skip') return 'badge badge-warning';
+		return 'badge badge-danger';
+	}
+
+	function actionLabel(action: string): string {
+		if (action === 'create') return '新增';
+		if (action === 'skip') return '跳过';
+		return '失败';
+	}
+
 	const groupedFixtures = $derived<Record<number, Fixture[]>>($fixtures.reduce((acc, fixture) => {
 		const round = fixture.round;
 		if (!acc[round]) acc[round] = [];
@@ -241,6 +336,7 @@
 					onclick={() => {
 						showAddFixture = !showAddFixture;
 						showAddResult = false;
+						showImport = false;
 					}}
 				>
 					{showAddFixture ? '取消' : '+ 添加赛程'}
@@ -250,9 +346,20 @@
 					onclick={() => {
 						showAddResult = !showAddResult;
 						showAddFixture = false;
+						showImport = false;
 					}}
 				>
 					{showAddResult ? '取消' : '+ 录入结果'}
+				</button>
+				<button
+					class="btn btn-warning"
+					onclick={() => {
+						showImport = !showImport;
+						showAddFixture = false;
+						showAddResult = false;
+					}}
+				>
+					{showImport ? '取消' : '📋 批量导入'}
 				</button>
 			</div>
 		{/if}
@@ -263,6 +370,201 @@
 			<p class="text-muted text-lg">请先选择一个赛季</p>
 		</div>
 	{:else}
+		{#if canEdit && showImport}
+			<div class="card">
+				<h3 class="card-title">批量导入赛程与结果</h3>
+				<p class="text-sm text-muted mb-4">
+					从 Excel 或其他表格软件复制数据后粘贴到下方文本框。每行格式（Tab分隔）：<br>
+					<strong>轮次[Tab]主队[Tab]客队[Tab]主队比分[Tab]客队比分[Tab]备注</strong><br>
+					比分和备注列可选。备注可填：主队弃权 / 客队弃权 / 双方弃权。无比分则仅创建赛程。
+				</p>
+
+				<div class="form-group">
+					<label for="importText">粘贴表格文本</label>
+					<textarea
+						id="importText"
+						class="import-textarea"
+						bind:value={importText}
+						placeholder={"1\t队伍A\t队伍B\t3\t1\n1\t队伍C\t队伍D\t0\t2\t主队弃权\n2\t队伍A\t队伍C\n2\t队伍B\t队伍D\t1\t1"}
+						rows="8"
+					></textarea>
+				</div>
+
+				<div class="flex justify-end gap-3 mb-4">
+					<button
+						type="button"
+						class="btn btn-secondary"
+						onclick={cancelImport}
+					>
+						取消
+					</button>
+					<button
+						type="button"
+						class="btn btn-primary"
+						onclick={previewImport}
+						disabled={isImportPreviewing || !importText.trim()}
+					>
+						{isImportPreviewing ? '预检中...' : '预检'}
+					</button>
+				</div>
+
+				{#if importPreview}
+					<div class="import-preview">
+						<h4 class="text-lg font-semibold mb-3">预检结果</h4>
+
+						<div class="import-summary">
+							<div class="import-summary-item">
+								<span class="import-summary-label">队伍</span>
+								<span class="badge badge-success">新增 {importPreview.summary.teamsNew}</span>
+								<span class="badge badge-warning">跳过 {importPreview.summary.teamsSkipped}</span>
+								<span class="badge badge-danger">失败 {importPreview.summary.teamsError}</span>
+							</div>
+							<div class="import-summary-item">
+								<span class="import-summary-label">赛程</span>
+								<span class="badge badge-success">新增 {importPreview.summary.fixturesNew}</span>
+								<span class="badge badge-warning">跳过 {importPreview.summary.fixturesSkipped}</span>
+								<span class="badge badge-danger">失败 {importPreview.summary.fixturesError}</span>
+							</div>
+							<div class="import-summary-item">
+								<span class="import-summary-label">结果</span>
+								<span class="badge badge-success">新增 {importPreview.summary.resultsNew}</span>
+								<span class="badge badge-warning">跳过 {importPreview.summary.resultsSkipped}</span>
+								<span class="badge badge-danger">失败 {importPreview.summary.resultsError}</span>
+							</div>
+						</div>
+
+						{#if importPreview.teams.length > 0}
+							<div class="mt-4">
+								<h5 class="font-medium mb-2">队伍变更</h5>
+								<div class="import-preview-table-wrap">
+									<table class="import-preview-table">
+										<thead>
+											<tr>
+												<th>队伍名称</th>
+												<th>操作</th>
+												<th>说明</th>
+											</tr>
+										</thead>
+										<tbody>
+											{#each importPreview.teams as team (team.name)}
+												<tr class="import-row-{team.action}">
+													<td>{team.name}</td>
+													<td><span class={actionBadgeClass(team.action)}>{actionLabel(team.action)}</span></td>
+													<td>{team.reason}</td>
+												</tr>
+											{/each}
+										</tbody>
+									</table>
+								</div>
+							</div>
+						{/if}
+
+						{#if importPreview.fixtures.length > 0}
+							<div class="mt-4">
+								<h5 class="font-medium mb-2">赛程变更</h5>
+								<div class="import-preview-table-wrap">
+									<table class="import-preview-table">
+										<thead>
+											<tr>
+												<th>行号</th>
+												<th>轮次</th>
+												<th>主队</th>
+												<th>客队</th>
+												<th>操作</th>
+												<th>说明</th>
+											</tr>
+										</thead>
+										<tbody>
+											{#each importPreview.fixtures as fixture (fixture.lineNumber)}
+												<tr class="import-row-{fixture.action}">
+													<td>{fixture.lineNumber}</td>
+													<td>{fixture.round}</td>
+													<td>{fixture.homeTeamName}</td>
+													<td>{fixture.awayTeamName}</td>
+													<td><span class={actionBadgeClass(fixture.action)}>{actionLabel(fixture.action)}</span></td>
+													<td>{fixture.reason}</td>
+												</tr>
+											{/each}
+										</tbody>
+									</table>
+								</div>
+							</div>
+						{/if}
+
+						{#if importPreview.results.length > 0}
+							<div class="mt-4">
+								<h5 class="font-medium mb-2">结果变更</h5>
+								<div class="import-preview-table-wrap">
+									<table class="import-preview-table">
+										<thead>
+											<tr>
+												<th>行号</th>
+												<th>轮次</th>
+												<th>主队</th>
+												<th>比分</th>
+												<th>客队</th>
+												<th>操作</th>
+												<th>说明</th>
+											</tr>
+										</thead>
+										<tbody>
+											{#each importPreview.results as result (result.lineNumber)}
+												<tr class="import-row-{result.action}">
+													<td>{result.lineNumber}</td>
+													<td>{result.round}</td>
+													<td>{result.homeTeamName}</td>
+													<td>
+														{#if result.isHomeForfeit && result.isAwayForfeit}
+															0-0 (双方弃权)
+														{:else if result.isHomeForfeit}
+															0-3 (主队弃权)
+														{:else if result.isAwayForfeit}
+															3-0 (客队弃权)
+														{:else}
+															{result.homeScore}-{result.awayScore}
+														{/if}
+													</td>
+													<td>{result.awayTeamName}</td>
+													<td><span class={actionBadgeClass(result.action)}>{actionLabel(result.action)}</span></td>
+													<td>{result.reason}</td>
+												</tr>
+											{/each}
+										</tbody>
+									</table>
+								</div>
+							</div>
+						{/if}
+
+						{#if !importPreview.canProceed}
+							<div class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+								<p class="text-red-700 text-sm font-medium">
+									存在失败项，请修正后重新预检。导入操作需要所有项均无错误才可提交。
+								</p>
+							</div>
+						{/if}
+
+						<div class="flex justify-end gap-3 mt-4">
+							<button
+								type="button"
+								class="btn btn-secondary"
+								onclick={() => { importPreview = null; }}
+							>
+								返回修改
+							</button>
+							<button
+								type="button"
+								class="btn btn-danger"
+								onclick={commitImport}
+								disabled={isImportCommitting || !importPreview.canProceed}
+							>
+								{isImportCommitting ? '提交中...' : '确认导入'}
+							</button>
+						</div>
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		{#if canEdit && showAddFixture}
 			<div class="card">
 				<h3 class="card-title">添加赛程</h3>
@@ -436,9 +738,14 @@
 			<div class="card text-center py-12">
 				<p class="text-muted text-lg">暂无赛程</p>
 				{#if canEdit}
-					<button class="btn btn-primary mt-4" onclick={() => (showAddFixture = true)}>
-						添加赛程
-					</button>
+					<div class="flex justify-center gap-3 mt-4">
+						<button class="btn btn-primary" onclick={() => (showAddFixture = true)}>
+							添加赛程
+						</button>
+						<button class="btn btn-warning" onclick={() => (showImport = true)}>
+							批量导入
+						</button>
+					</div>
 				{/if}
 			</div>
 		{:else}
@@ -493,6 +800,8 @@
 				<li>弃权比赛系统会自动处理比分和积分</li>
 				<li>录入结果后积分榜会自动更新</li>
 				<li>可以在积分榜页面撤回最近一次录入的结果</li>
+				<li>批量导入前须先预检，确认无失败项后才可提交</li>
+				<li>批量导入为原子操作，任一行失败将回滚全部数据</li>
 			</ul>
 		</div>
 	{/if}

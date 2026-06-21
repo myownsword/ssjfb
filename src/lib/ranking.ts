@@ -162,16 +162,10 @@ function compareStandings(
 	return a.team.name.localeCompare(b.team.name);
 }
 
-export async function calculateStandings(
-	seasonId: string,
-	results?: MatchResult[]
-): Promise<TeamStanding[]> {
-	const teams = await getTeamsBySeason(seasonId);
-
-	if (!results) {
-		results = await getMatchResultsBySeason(seasonId);
-	}
-
+export function calculateStandingsFromData(
+	teams: Team[],
+	results: MatchResult[]
+): TeamStanding[] {
 	const statsMap = new Map<string, { stats: StandingStats; team: Team }>();
 
 	for (const team of teams) {
@@ -194,7 +188,7 @@ export async function calculateStandings(
 		compareStandings(a, b, statsMap)
 	);
 
-	const standings: TeamStanding[] = sortedEntries.map((entry, index) => ({
+	return sortedEntries.map((entry, index) => ({
 		teamId: entry.team.id,
 		teamName: entry.team.name,
 		rank: index + 1,
@@ -209,8 +203,19 @@ export async function calculateStandings(
 		forfeits: entry.stats.forfeits,
 		isWithdrawn: entry.team.isWithdrawn
 	}));
+}
 
-	return standings;
+export async function calculateStandings(
+	seasonId: string,
+	results?: MatchResult[]
+): Promise<TeamStanding[]> {
+	const teams = await getTeamsBySeason(seasonId);
+
+	if (!results) {
+		results = await getMatchResultsBySeason(seasonId);
+	}
+
+	return calculateStandingsFromData(teams, results);
 }
 
 export async function createRankingSnapshots(
